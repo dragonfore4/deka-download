@@ -1,6 +1,15 @@
 {
-  "name": "dka",
+  "name": "deka-ptoey",
+  "version": "1.0.0",
+  "description": "A tool to download Thai court documents (DEKA) as PDFs",
   "private": true,
+  "scripts": {
+    "start": "bun run main.ts",
+    "start:split": "bun run split-by-year-main.ts",
+    "test": "bun run test_pdf.ts",
+    "dev": "bun run main.ts",
+    "clean": "rm -rf downloads .download_checkpoint.json deka_download.log"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -8,6 +17,15 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "playwright": "^1.58.2"
-  }
+    "@types/node": "^25.6.0"
+  },
+  "keywords": [
+    "thai",
+    "court",
+    "documents",
+    "pdf",
+    "scraper"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
 }
