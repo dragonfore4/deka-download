@@ -14,9 +14,12 @@ export interface Config {
   readonly MAX_RETRY_DELAY_MS: number;
 
   // Timing settings
-  readonly BATCH_DELAY_MS: number;
+  readonly REQUEST_JITTER_MS: number;
   readonly REQUEST_TIMEOUT_MS: number;
   readonly HEALTH_CHECK_INTERVAL_MS: number;
+
+  // How often to persist the checkpoint (every N completed downloads)
+  readonly CHECKPOINT_EVERY: number;
 
   // File settings
   readonly DOWNLOAD_DIR: string;
@@ -44,23 +47,27 @@ export const config: Config = {
     return `${this.GOTENBERG_BASE_URL}/forms/chromium/convert/html`;
   },
 
-  // Concurrency settings
+  // Concurrency settings (medium / safe defaults — overridable via env)
   GET_DEKA_ID_CONCURRENCY_LIMIT: parseInt(
-    process.env.GET_DEKA_ID_CONCURRENCY_LIMIT || "5",
+    process.env.GET_DEKA_ID_CONCURRENCY_LIMIT || "8",
     10,
   ),
   DOWNLOAD_CONCURRENCY_LIMIT: parseInt(
-    process.env.DOWNLOAD_CONCURRENCY_LIMIT || "5",
+    process.env.DOWNLOAD_CONCURRENCY_LIMIT || "8",
     10,
   ),
   RETRY_LIMIT: 3,
-  INITIAL_RETRY_DELAY_MS: 1000,
-  MAX_RETRY_DELAY_MS: 10000,
+  INITIAL_RETRY_DELAY_MS: 800,
+  MAX_RETRY_DELAY_MS: 8000,
 
   // Timing settings
-  BATCH_DELAY_MS: 2000,
+  // Small random pre-request delay so the pool doesn't fire every worker at the
+  // exact same instant (kinder to the server, lowers the chance of rate-limiting).
+  REQUEST_JITTER_MS: parseInt(process.env.REQUEST_JITTER_MS || "300", 10),
   REQUEST_TIMEOUT_MS: 30000,
   HEALTH_CHECK_INTERVAL_MS: 30000,
+
+  CHECKPOINT_EVERY: parseInt(process.env.CHECKPOINT_EVERY || "20", 10),
 
   // File settings
   DOWNLOAD_DIR: "downloads",

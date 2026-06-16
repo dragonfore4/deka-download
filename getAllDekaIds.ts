@@ -1,6 +1,7 @@
 import config from "./config.js";
 import httpClient from "./utils/httpClient.js";
 import { logger } from "./utils/logger.js";
+import { runPool, jitter } from "./utils/pool.js";
 
 export async function getAllDekaIds(
   startYear: number,
@@ -21,6 +22,7 @@ export async function getAllDekaIds(
     const url = `${config.DEKA_BASE_URL}/search/index/${page}`;
 
     try {
+      await jitter(config.REQUEST_JITTER_MS);
       const response = await httpClient.requestWithRetry<string>(
         url,
         {
@@ -55,42 +57,28 @@ export async function getAllDekaIds(
     payload.append("search_deka_start_year", startYear.toString());
     payload.append("search_deka_end_year", endYear.toString());
 
-    // Process pages in batches
-    for (let i = 1; i <= totalPages; i += CONCURRENCY_LIMIT) {
-      const currentBatch = [];
+    // Stream all pages through a worker pool — workers pull the next page as soon
+    // as they finish, so a single slow page never stalls the others.
+    const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
 
-      // Create array of page numbers for this batch
-      for (let j = i; j < i + CONCURRENCY_LIMIT && j <= totalPages; j++) {
-        currentBatch.push(j);
-      }
+    const pageResults = await runPool(
+      pages,
+      CONCURRENCY_LIMIT,
+      (page) => fetchPageWithRetry(page, payload),
+      (ids, page, _index, { completed, total }) => {
+        if (ids.length > 0) {
+          logger.info(
+            `  📄 Page ${page}: Found ${ids.length} records (${completed}/${total} pages)`,
+          );
+        } else {
+          logger.warn(
+            `  📄 Page ${page}: No data found or error occurred (${completed}/${total} pages)`,
+          );
+        }
+      },
+    );
 
-      logger.info(`🚀 Fetching page batch: ${currentBatch.join(", ")}...`);
-
-      const batchResults = await Promise.all(
-        currentBatch.map(async (page) => {
-          const ids = await fetchPageWithRetry(page, payload);
-
-          if (ids.length > 0) {
-            logger.info(`  📄 Page ${page}: Found ${ids.length} records`);
-          } else {
-            logger.warn(`  📄 Page ${page}: No data found or error occurred`);
-          }
-
-          return ids;
-        }),
-      );
-
-      // Combine results
-      batchResults.forEach((ids) => resultList.push(...ids));
-
-      // Delay between batches to be kind to the server
-      if (i + CONCURRENCY_LIMIT <= totalPages) {
-        logger.debug(
-          `Pausing for ${config.BATCH_DELAY_MS}ms before next batch...`,
-        );
-        await new Promise((res) => setTimeout(res, config.BATCH_DELAY_MS));
-      }
-    }
+    pageResults.forEach((ids) => resultList.push(...ids));
 
     const uniqueIds = [...new Set(resultList)];
     logger.info(

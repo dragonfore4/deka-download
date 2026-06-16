@@ -24,7 +24,22 @@ bun install
 
 ## Setup
 
-Before running the PDF workflow, start Gotenberg locally:
+Before running the PDF workflow, start Gotenberg (the HTML→PDF service).
+
+### Recommended: docker compose (includes Thai fonts)
+
+The DEKA print pages use the Windows fonts *Browallia New* / *Angsana New*, which
+don't exist on Linux. The bundled `Dockerfile.gotenberg` installs the TLWG Thai
+fonts and aliases those names (see `fonts/local.conf`) so Thai text renders
+correctly instead of as missing-glyph boxes.
+
+```bash
+docker compose up -d --build   # build + run in the background on port 3000
+docker compose logs -f         # watch logs
+docker compose down            # stop
+```
+
+### Quick alternative (no custom Thai fonts)
 
 ```bash
 docker run --rm -p 3000:3000 gotenberg/gotenberg:8
