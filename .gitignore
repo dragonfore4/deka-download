@@ -114,9 +114,6 @@ dist/
 # Mac files
 .DS_Store
 
-# Downloaded files
-downloads/
-
 # Checkpoint files
 .download_checkpoint.json
 

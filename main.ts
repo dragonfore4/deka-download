@@ -4,6 +4,7 @@ import { getTotalPages } from "./getTotalpages.js";
 import config from "./config.js";
 import { logger, LogLevel } from "./utils/logger.js";
 import { checkpointManager } from "./utils/checkpointManager.js";
+import { runPool } from "./utils/pool.js";
 
 // Set log level
 logger.setLogLevel(LogLevel.INFO);
@@ -57,75 +58,52 @@ async function startWorkflow(startYear: number, endYear: number) {
     }
 
     // Filter out already downloaded IDs
-    let remainingIds = allIds.filter((id) => !downloadedIds.includes(id));
+    const remainingIds = allIds.filter((id) => !downloadedIds.includes(id));
     logger.info(
-      `📂 Starting download of ${remainingIds.length} PDF files (${CONCURRENCY_LIMIT} at a time)...`,
+      `📂 Starting download of ${remainingIds.length} PDF files (${CONCURRENCY_LIMIT} workers, streaming)...`,
     );
 
-    for (let i = 0; i < remainingIds.length; i += CONCURRENCY_LIMIT) {
-      // Create batch
-      const batch = remainingIds.slice(i, i + CONCURRENCY_LIMIT);
-
-      logger.info(
-        `\n⏳ Downloading batch ${Math.floor(i / CONCURRENCY_LIMIT) + 1} (IDs: ${batch.join(", ")})`,
-      );
-
-      // Download concurrently in this batch
-      const results = await Promise.all(
-        batch.map(async (docId) => {
-          const success = await downloadDekaPDF(docId, folderName);
-          return { docId, success };
+    // Run downloads through a streaming worker pool: each worker grabs the next
+    // ID the moment it finishes, so one slow/retrying download never blocks the
+    // rest. Checkpoint is persisted every `CHECKPOINT_EVERY` completions.
+    const downloadAll = async (ids: string[]) =>
+      runPool(
+        ids,
+        CONCURRENCY_LIMIT,
+        async (docId) => ({
+          docId,
+          success: await downloadDekaPDF(docId, folderName),
         }),
+        async ({ docId, success }, _item, _index, { completed, total }) => {
+          if (success) {
+            downloadedIds.push(docId);
+          } else {
+            failedIds.push(docId);
+          }
+
+          if (completed % config.CHECKPOINT_EVERY === 0 || completed === total) {
+            logger.info(
+              `📦 Progress: ${completed}/${total} (✅ ${downloadedIds.length} / ❌ ${failedIds.length})`,
+            );
+            await checkpointManager.saveCheckpoint(
+              startYear,
+              endYear,
+              downloadedIds,
+              failedIds,
+            );
+          }
+        },
       );
 
-      // Update progress tracking
-      results.forEach(({ docId, success }) => {
-        if (success) {
-          downloadedIds.push(docId);
-        } else {
-          failedIds.push(docId);
-        }
-      });
+    await downloadAll(remainingIds);
 
-      // Save checkpoint
-      await checkpointManager.saveCheckpoint(
-        startYear,
-        endYear,
-        downloadedIds,
-        failedIds,
-      );
-
-      // Delay between batches to be kind to the server
-      if (i + CONCURRENCY_LIMIT < remainingIds.length) {
-        logger.info(
-          `Pausing for ${config.BATCH_DELAY_MS}ms before next batch...`,
-        );
-        await new Promise((resolve) =>
-          setTimeout(resolve, config.BATCH_DELAY_MS),
-        );
-      }
-    }
-
-    // Handle failed downloads with retries
+    // One more pass over anything that still failed (server may have been busy).
     if (failedIds.length > 0) {
-      logger.warn(`🔁 Retrying ${failedIds.length} failed downloads...`);
-      const retryResults = await Promise.all(
-        failedIds.map(async (docId) => {
-          const success = await downloadDekaPDF(docId, folderName);
-          return { docId, success };
-        }),
-      );
+      const toRetry = [...failedIds];
+      failedIds = [];
+      logger.warn(`🔁 Retrying ${toRetry.length} failed downloads...`);
+      await downloadAll(toRetry);
 
-      // Update final results
-      retryResults.forEach(({ docId, success }) => {
-        if (success) {
-          // Move from failed to downloaded
-          failedIds = failedIds.filter((id) => id !== docId);
-          downloadedIds.push(docId);
-        }
-      });
-
-      // Save final checkpoint
       await checkpointManager.saveCheckpoint(
         startYear,
         endYear,

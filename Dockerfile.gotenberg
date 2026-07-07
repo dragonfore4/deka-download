@@ -1,0 +1,21 @@
+# Gotenberg + Thai fonts for rendering DEKA judgement PDFs.
+#
+# The DEKA print pages request "Browallia New" / "Angsana New" — Windows fonts
+# that don't exist on Linux. Without Thai fonts the headless Chromium inside
+# Gotenberg renders Thai text as missing-glyph boxes (□□□). We install the TLWG
+# Thai fonts and alias the Windows font names to them (see fonts/local.conf).
+FROM gotenberg/gotenberg:8
+
+# apt + font install must run as root; Gotenberg runs as the "gotenberg" user.
+USER root
+
+# curl is for the docker-compose healthcheck; the rest is Thai font support.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-thai-tlwg fontconfig curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Map the Windows font names used by the DEKA pages to installed Thai fonts.
+COPY fonts/local.conf /etc/fonts/local.conf
+RUN fc-cache -f
+
+USER gotenberg

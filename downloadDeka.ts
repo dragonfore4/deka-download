@@ -3,7 +3,7 @@ import path from "path";
 import config from "./config.js";
 import httpClient from "./utils/httpClient.js";
 import { logger } from "./utils/logger.js";
-import { checkpointManager } from "./utils/checkpointManager.js";
+import { jitter } from "./utils/pool.js";
 
 function buildPayload(docId: string) {
   const payload = new URLSearchParams();
@@ -35,8 +35,27 @@ function ensureDownloadPath(folderName: string) {
 function looksLikePdf(contentType: string, body: ArrayBuffer) {
   return (
     contentType.includes("application/pdf") ||
-    Buffer.from(body).slice(0, 4).toString("utf8") === "%PDF"
+    Buffer.from(body).subarray(0, 4).toString("utf8") === "%PDF"
   );
+}
+
+/**
+ * Remove everything Chromium would otherwise block on while rendering.
+ *
+ * The print page is fully static HTML (the judgement text lives inside
+ * `<page size="A4">` already), but it references jQuery, an analytics tag, the
+ * in-browser "print" script, and `html5shiv.googlecode.com` — a host that has
+ * been dead since Google Code shut down in 2016. Chromium waits on each of these
+ * before printing, so stripping them removes a multi-second stall per document.
+ */
+function stripExternalResources(htmlContent: string) {
+  return htmlContent
+    // Drop all <script> blocks — none are needed for a static PDF.
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    // Drop the Google Analytics / gtag loader (also a <script>, but be explicit).
+    .replace(/<script\b[^>]*googletagmanager[^>]*>[\s\S]*?<\/script>/gi, "")
+    // Drop the dead html5shiv reference in case it ever appears outside a <script>.
+    .replace(/<[^>]*html5shiv[^>]*>/gi, "");
 }
 
 function prepareHtmlForGotenberg(htmlContent: string) {
@@ -48,12 +67,13 @@ function prepareHtmlForGotenberg(htmlContent: string) {
     </style>
   `;
   const baseTag = '<base href="https://deka.supremecourt.or.th/">';
+  const cleaned = stripExternalResources(htmlContent);
 
-  if (htmlContent.includes("</head>")) {
-    return htmlContent.replace("</head>", `${baseTag}${styleBlock}</head>`);
+  if (cleaned.includes("</head>")) {
+    return cleaned.replace("</head>", `${baseTag}${styleBlock}</head>`);
   }
 
-  return `${styleBlock}${baseTag}${htmlContent}`;
+  return `${styleBlock}${baseTag}${cleaned}`;
 }
 
 async function renderWithGotenberg(htmlContent: string, filePath: string) {
@@ -67,6 +87,9 @@ async function renderWithGotenberg(htmlContent: string, filePath: string) {
     new Blob([prepareHtmlForGotenberg(htmlContent)], { type: "text/html" }),
     "index.html",
   );
+  // The HTML is static after we strip scripts, so don't make Chromium wait for a
+  // network-idle event before printing — it has nothing left to fetch.
+  formData.append("skipNetworkIdleEvent", "true");
 
   const response = await httpClient.requestWithRetry<ArrayBuffer>(
     config.GOTENBERG_HTML_URL,
@@ -100,6 +123,9 @@ export async function downloadDekaPDF(docId: string, folderName: string) {
       logger.info(`⏭️  File already exists, skipping: ${filePath}`);
       return true;
     }
+
+    // Spread concurrent workers out a little instead of firing in lockstep.
+    await jitter(config.REQUEST_JITTER_MS);
 
     const response = await httpClient.requestWithRetry<ArrayBuffer>(
       config.DEKA_PRINT_URL,
