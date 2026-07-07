@@ -134,33 +134,56 @@ async function startWorkflow(startYear: number, endYear: number) {
   }
 }
 
-const YEAR_RANGES = [
-  // { startYear: 2568, endYear: 2569 },
-  // { startYear: 2567, endYear: 2568 }
-  // { startYear: 2566, endYear: 2567 },
-  // { startYear: 2565, endYear: 2566 },
-  // { startYear: 2564, endYear: 2565 },
-  // { startYear: 2563, endYear: 2564 },
-  // { startYear: 2562, endYear: 2563 },
-  // { startYear: 2561, endYear: 2562 },
-  // { startYear: 2560, endYear: 2561 },
-  // { startYear: 2559, endYear: 2560 },
-  // { startYear: 2558, endYear: 2559 },
-  // { startYear: 2557, endYear: 2558 },
-  // { startYear: 2556, endYear: 2557 },
-  // { startYear: 2555, endYear: 2556 },
-  // { startYear: 2554, endYear: 2555 },
-  { startYear: 2553, endYear: 2554 },
-  { startYear: 2552, endYear: 2553 },
-  { startYear: 2551, endYear: 2552 },
-  { startYear: 2550, endYear: 2551 },
-];
+// ฟังก์ชันสร้างช่วงปีแบบอัตโนมัติ
+function generateYearRanges(startYear: number, endYear: number) {
+  const length = endYear - startYear;
+  return Array.from({ length }, (_, i) => ({
+    startYear: endYear - 1 - i,
+    endYear: endYear - i,
+  }));
+}
 
 async function runAllYearRanges() {
+  // กำหนดช่วงปีที่ต้องการได้เลยตรงนี้
+  const YEAR_RANGES = generateYearRanges(2565, 2569);
+
   for (const { startYear, endYear } of YEAR_RANGES) {
     await startWorkflow(startYear, endYear);
   }
 }
 
-// Run the workflow
+// เรียกใช้งาน
 runAllYearRanges();
+
+// OLD ONE
+
+// const YEAR_RANGES = [
+// { startYear: 2568, endYear: 2569 },
+// { startYear: 2567, endYear: 2568 }
+// { startYear: 2566, endYear: 2567 },
+// { startYear: 2565, endYear: 2566 },
+// { startYear: 2564, endYear: 2565 },
+// { startYear: 2563, endYear: 2564 },
+// { startYear: 2562, endYear: 2563 },
+// { startYear: 2561, endYear: 2562 },
+// { startYear: 2560, endYear: 2561 },
+// { startYear: 2559, endYear: 2560 },
+// { startYear: 2558, endYear: 2559 },
+// { startYear: 2557, endYear: 2558 },
+// { startYear: 2556, endYear: 2557 },
+// { startYear: 2555, endYear: 2556 },
+// { startYear: 2554, endYear: 2555 },
+// { startYear: 2553, endYear: 2554 },
+// { startYear: 2552, endYear: 2553 },
+// { startYear: 2551, endYear: 2552 },
+// { startYear: 2550, endYear: 2551 },
+// ];
+
+// async function runAllYearRanges() {
+//   for (const { startYear, endYear } of YEAR_RANGES) {
+//     await startWorkflow(startYear, endYear);
+//   }
+// }
+
+// // Run the workflow
+// runAllYearRanges();

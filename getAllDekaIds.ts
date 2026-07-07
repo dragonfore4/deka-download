@@ -10,6 +10,9 @@ export async function getAllDekaIds(
 ): Promise<string[]> {
   const resultList: string[] = [];
   const CONCURRENCY_LIMIT = config.GET_DEKA_ID_CONCURRENCY_LIMIT;
+  // Every page returns a full set of records except the last one, so only the
+  // off-count (last) page and empty/error pages are worth logging individually.
+  const RECORDS_PER_PAGE = 20;
 
   logger.info(
     `Starting to fetch DEKA IDs for years ${startYear}-${endYear} with ${totalPages} pages`,
@@ -66,15 +69,17 @@ export async function getAllDekaIds(
       CONCURRENCY_LIMIT,
       (page) => fetchPageWithRetry(page, payload),
       (ids, page, _index, { completed, total }) => {
-        if (ids.length > 0) {
-          logger.info(
-            `  📄 Page ${page}: Found ${ids.length} records (${completed}/${total} pages)`,
-          );
-        } else {
+        if (ids.length === 0) {
           logger.warn(
             `  📄 Page ${page}: No data found or error occurred (${completed}/${total} pages)`,
           );
+        } else if (ids.length !== RECORDS_PER_PAGE) {
+          // Off-count page (typically the last page) — worth surfacing.
+          logger.info(
+            `  📄 Page ${page}: Found ${ids.length} records (${completed}/${total} pages)`,
+          );
         }
+        // Full-count pages are silent; the final summary reports the total.
       },
     );
 
