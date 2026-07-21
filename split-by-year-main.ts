@@ -134,18 +134,20 @@ async function startWorkflow(startYear: number, endYear: number) {
   }
 }
 
-// ฟังก์ชันสร้างช่วงปีแบบอัตโนมัติ
-function generateYearRanges(startYear: number, endYear: number) {
-  const length = endYear - startYear;
-  return Array.from({ length }, (_, i) => ({
-    startYear: endYear - 1 - i,
-    endYear: endYear - i,
-  }));
+// สร้างรายการปีแบบ "รายปี" (ปีละ 1 รายการ, startYear === endYear) เรียงจากปีใหม่ไปเก่า
+// ค้นทีละปีจึงไม่มีปีคาบเกี่ยวกันเหมือนช่วง 2 ปีแบบเดิม (2568-2569, 2567-2568, ...)
+// ที่ทำให้ปีขอบซ้อนกันและถูกโหลดซ้ำ. fromYear/toYear รวมทั้งสองปลาย
+function generateYearRanges(fromYear: number, toYear: number) {
+  const length = toYear - fromYear + 1;
+  return Array.from({ length }, (_, i) => {
+    const year = toYear - i;
+    return { startYear: year, endYear: year };
+  });
 }
 
 async function runAllYearRanges() {
-  // กำหนดช่วงปีที่ต้องการได้เลยตรงนี้
-  const YEAR_RANGES = generateYearRanges(2565, 2569);
+  // กำหนดช่วงปีที่ต้องการได้เลยตรงนี้ (รวมทั้งปีเริ่มและปีสุดท้าย)
+  const YEAR_RANGES = generateYearRanges(2530, 2535);
 
   for (const { startYear, endYear } of YEAR_RANGES) {
     await startWorkflow(startYear, endYear);
